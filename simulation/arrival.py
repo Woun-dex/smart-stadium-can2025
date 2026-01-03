@@ -14,9 +14,14 @@ So we need arrival rates that exceed 250 fans/min to create turnstile queues.
 Peak arrivals of 400-500/min will create realistic 5-15 minute waits.
 """
 import random
-from agents import fan
+from agents import fan, fan_group, vip_fan
 
 TOTAL_FANS = 68000  # Full stadium capacity
+
+# Realistic arrival factors
+WEATHER_FACTOR = random.uniform(0.9, 1.1)  # Weather affects timing (rain = early)
+TRAFFIC_FACTOR = random.uniform(0.95, 1.05)  # Traffic delays
+RIVALRY_GAME = random.random() < 0.3  # 30% chance of rivalry (higher demand)
 
 
 def arrival_process(env, stadium, metrics):
@@ -38,9 +43,18 @@ def create_arrival_process(env, stadium, metrics, total_fans=68000):
     - 68,000 fans need to arrive in ~180 minutes
     - Average rate needed: 378 fans/min
     - Peak rate: 450-550 fans/min (exceeds 250 capacity, creates queues)
+    
+    NEW REALISTIC FEATURES:
+    - Group arrivals (families, friends)
+    - VIP fast-track arrivals
+    - Weather and traffic effects
+    - Public transport arrival spikes
     """
     fan_id = 0
+    vip_count = int(total_fans * 0.05)  # 5% VIP
     scale_factor = total_fans / TOTAL_FANS
+    
+    rivalry_boost = 1.15 if RIVALRY_GAME else 1.0
     
     while fan_id < total_fans:
         t = env.now
@@ -51,41 +65,47 @@ def create_arrival_process(env, stadium, metrics, total_fans=68000):
         
         if t < 30:
             # Very early (first 30 min) - light traffic
-            # ~150 fans/min × 30 min = 4,500 fans (6.6%)
-            rate = 150 * scale_factor
+            # Season ticket holders, early birds, tailgaters
+            rate = 150 * scale_factor * WEATHER_FACTOR
             
         elif 30 <= t < 60:
             # Early arrivals building up
             # ~250 fans/min × 30 min = 7,500 fans (11%)
             # Matches capacity - no queue yet
-            rate = 250 * scale_factor
+            rate = 250 * scale_factor * WEATHER_FACTOR
             
         elif 60 <= t < 90:
             # Moderate buildup (2h before kickoff)
-            # ~350 fans/min × 30 min = 10,500 fans (15.4%)
-            # Exceeds capacity - queues start forming
-            rate = 350 * scale_factor
+            # Public transport arrivals start
+            rate = 350 * scale_factor * TRAFFIC_FACTOR * rivalry_boost
+            
+            # Simulate bus/train arrival spike
+            if int(t) % 15 == 0:  # Every 15 mins
+                rate *= 1.3  # 30% spike from public transport
             
         elif 90 <= t < 120:
             # PEAK RUSH (1.5h to 1h before kickoff)
-            # ~500 fans/min × 30 min = 15,000 fans (22%)
-            # 2× capacity - significant queues!
-            rate = 500 * scale_factor
+            # Multiple public transport arrivals
+            rate = 500 * scale_factor * TRAFFIC_FACTOR * rivalry_boost
+            
+            if int(t) % 10 == 0:  # More frequent arrivals
+                rate *= 1.4
             
         elif 120 <= t < 150:
             # Sustained rush (1h to 30min before)
-            # ~550 fans/min × 30 min = 16,500 fans (24.3%)
-            # Peak congestion
-            rate = 550 * scale_factor
+            # Maximum congestion period
+            rate = 550 * scale_factor * TRAFFIC_FACTOR * rivalry_boost
+            
+            if int(t) % 10 == 0:
+                rate *= 1.35
             
         elif 150 <= t < 180:
             # Final rush before kickoff
-            # ~450 fans/min × 30 min = 13,500 fans (19.9%)
-            rate = 450 * scale_factor
+            # Last-minute arrivals, people rushing
+            rate = 450 * scale_factor * rivalry_boost * 1.1
             
         elif 180 <= t < 200:
             # Just after kickoff (latecomers)
-            # ~25 fans/min × 20 min = 500 fans (0.7%)
             rate = 25 * scale_factor
             
         else:
@@ -99,10 +119,42 @@ def create_arrival_process(env, stadium, metrics, total_fans=68000):
         inter_arrival = random.expovariate(rate)
         yield env.timeout(inter_arrival)
         
-        # Spawn fan process
-        env.process(fan(env, fan_id, stadium, metrics))
-        metrics.fans_arrived += 1
-        fan_id += 1
+        # Decide arrival type
+        arrival_type = random.random()
+        
+        if arrival_type < 0.15:  # 15% arrive in groups (2-6 people)
+            group_size = random.choices([2, 3, 4, 5, 6], weights=[30, 35, 20, 10, 5])[0]
+            group_size = min(group_size, total_fans - fan_id)
+            
+            # Spawn group with slight delays
+            for i in range(group_size):
+                if fan_id < total_fans:
+                    is_vip = fan_id < vip_count
+                    if is_vip:
+                        env.process(vip_fan(env, fan_id, stadium, metrics))
+                    else:
+                        env.process(fan_group(env, fan_id, stadium, metrics, group_size))
+                    metrics.fans_arrived += 1
+                    fan_id += 1
+                    if i < group_size - 1:  # Small delay between group members
+                        yield env.timeout(random.uniform(0.05, 0.15))
+        
+        elif arrival_type < 0.20:  # 5% VIP arrivals (fast-track)
+            if fan_id < vip_count:
+                env.process(vip_fan(env, fan_id, stadium, metrics))
+            else:
+                env.process(fan(env, fan_id, stadium, metrics))
+            metrics.fans_arrived += 1
+            fan_id += 1
+        
+        else:  # 80% regular individual arrivals
+            is_vip = fan_id < vip_count
+            if is_vip:
+                env.process(vip_fan(env, fan_id, stadium, metrics))
+            else:
+                env.process(fan(env, fan_id, stadium, metrics))
+            metrics.fans_arrived += 1
+            fan_id += 1
 
 
 def get_arrival_rate_info():

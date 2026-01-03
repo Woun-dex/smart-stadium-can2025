@@ -250,12 +250,18 @@ class MetricsCollector:
             'arrival_rate_lag1': round(arrival_rate_lag1, 2),
             'arrival_rate_ma5': round(arrival_rate_ma5, 2),
             
-            # Resource levels
+            # Resource levels (in use)
             'security_in_use': self.stadium.security.count,
             'turnstiles_in_use': self.stadium.turnstiles.count,
             'vendors_in_use': self.stadium.vendors.count,
             'exits_in_use': self.stadium.exit_gates.count,
             'parking_free': self.stadium.parking.level,
+            
+            # Resource capacities (total available/open)
+            'active_security': self.stadium.active_security,
+            'active_turnstiles': self.stadium.active_turnstiles,
+            'active_vendors': self.stadium.active_vendors,
+            'active_exit_gates': self.stadium.active_exit_gates,
         }
         self.rows.append(row)
         

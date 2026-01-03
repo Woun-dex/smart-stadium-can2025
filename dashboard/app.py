@@ -1,7 +1,7 @@
 """
-Stadium AI Dashboard - Enhanced Real-Time Monitoring
-====================================================
-Beautiful, responsive dashboard with ML control visualization.
+Stadium AI Control Center - Professional Dashboard
+===================================================
+Real-time crowd monitoring, ML predictions, and intelligent control system.
 """
 import streamlit as st
 import pandas as pd
@@ -13,202 +13,331 @@ import requests
 import time
 from datetime import datetime
 from pathlib import Path
+import sys
+
+# Add parent directory for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+try:
+    from ml.risk_predictor import StadiumRiskPredictor, RiskLevel
+except ImportError:
+    StadiumRiskPredictor = None
 
 # Page configuration
 st.set_page_config(
-    page_title="Stadium AI Control Center",
+    page_title="🏟️ STADIUM CONTROL CENTER",
     page_icon="🏟️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# ============ ENHANCED CSS STYLING ============
+# ============ CONTROL ROOM STYLING ============
 st.markdown("""
 <style>
-    /* Main container */
-    .main .block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 100%; }
+    /* Dark control room theme */
+    .stApp {
+        background: linear-gradient(180deg, #0a0e1a 0%, #121827 100%);
+    }
     
-    /* Header styling */
+    /* Main container - fullscreen */
+    .main .block-container { 
+        padding: 0.5rem 1rem; 
+        max-width: 100%; 
+    }
+    
+    /* Header - Large control room style */
     .main-header {
-        font-size: 2.8rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+        font-size: 3.5rem;
+        font-weight: 900;
+        background: linear-gradient(135deg, #00d4ff 0%, #0080ff 50%, #0040ff 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         text-align: center;
-        padding: 0.5rem;
-        margin-bottom: 1rem;
+        padding: 0.3rem;
+        margin-bottom: 0.3rem;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        text-shadow: 0 0 40px rgba(0,212,255,0.5);
     }
     
     .sub-header {
-        font-size: 1.2rem;
-        color: #666;
+        font-size: 1.1rem;
+        color: #60a5fa;
         text-align: center;
         margin-top: -10px;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
     }
     
-    /* Status alerts */
-    .alert-critical {
-        background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
-        color: white;
-        padding: 1.2rem;
+    /* Status cards - Dark control room */
+    .status-card {
+        background: rgba(15,23,42,0.8);
         border-radius: 12px;
-        font-weight: bold;
+        padding: 1.5rem;
+        box-shadow: 0 0 30px rgba(0,212,255,0.15), inset 0 0 60px rgba(0,100,255,0.05);
+        border: 2px solid rgba(0,212,255,0.3);
+        margin-bottom: 1rem;
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Alert banners - Large control room displays */
+    .alert-critical {
+        background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        font-weight: 900;
         text-align: center;
-        font-size: 1.1rem;
-        box-shadow: 0 4px 20px rgba(255,65,108,0.4);
-        animation: pulse 2s infinite;
+        font-size: 1.8rem;
+        box-shadow: 0 0 50px rgba(220,38,38,0.8), inset 0 0 30px rgba(255,0,0,0.2);
+        animation: pulse-critical 1.5s infinite;
+        border: 3px solid #ff0000;
+        text-transform: uppercase;
+        letter-spacing: 3px;
     }
     
     .alert-warning {
-        background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
-        color: #333;
-        padding: 1.2rem;
+        background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+        color: #000;
+        padding: 1.5rem 2rem;
         border-radius: 12px;
-        font-weight: bold;
+        font-weight: 900;
         text-align: center;
-        font-size: 1.1rem;
-        box-shadow: 0 4px 15px rgba(247,151,30,0.3);
+        font-size: 1.8rem;
+        box-shadow: 0 0 50px rgba(245,158,11,0.6), inset 0 0 30px rgba(255,200,0,0.2);
+        border: 3px solid #fbbf24;
+        text-transform: uppercase;
+        letter-spacing: 3px;
     }
     
     .alert-ok {
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
         color: white;
-        padding: 1.2rem;
+        padding: 1.5rem 2rem;
         border-radius: 12px;
-        font-weight: bold;
+        font-weight: 900;
         text-align: center;
-        font-size: 1.1rem;
-        box-shadow: 0 4px 15px rgba(17,153,142,0.3);
+        font-size: 1.8rem;
+        box-shadow: 0 0 50px rgba(16,185,129,0.6), inset 0 0 30px rgba(0,255,150,0.2);
+        border: 3px solid #10b981;
+        text-transform: uppercase;
+        letter-spacing: 3px;
     }
     
-    /* Live badge */
+    /* Live badge - Control room style */
     .live-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(135deg, #ff416c, #ff4b2b);
+        background: linear-gradient(135deg, #dc2626, #ff0000);
         color: white;
-        padding: 0.4rem 1rem;
+        padding: 0.6rem 1.5rem;
         border-radius: 25px;
-        font-size: 0.9rem;
-        font-weight: bold;
+        font-size: 1.1rem;
+        font-weight: 900;
         margin-bottom: 1rem;
+        box-shadow: 0 0 30px rgba(255,0,0,0.8);
+        border: 2px solid #ff0000;
+        text-transform: uppercase;
+        letter-spacing: 2px;
     }
     
     .live-dot {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
         background: white;
         border-radius: 50%;
-        margin-right: 8px;
+        margin-right: 10px;
         animation: blink 1s infinite;
+        box-shadow: 0 0 15px rgba(255,255,255,0.9);
     }
     
-    /* ML Action cards - Minimal Design */
-    .ml-action {
-        background: #f8fafc;
-        border-left: 4px solid #3b82f6;
-        padding: 12px 16px;
-        margin: 8px 0;
-        border-radius: 0 8px 8px 0;
-        font-size: 0.9rem;
+    /* Risk indicator - Large displays */
+    .risk-indicator {
+        display: inline-block;
+        padding: 8px 18px;
+        border-radius: 25px;
+        font-size: 1.1rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        box-shadow: 0 0 20px currentColor;
     }
-    .ml-action-strong {
-        background: #fef2f2;
-        border-left: 4px solid #ef4444;
+    .risk-low { background: #10b981; color: white; }
+    .risk-moderate { background: #fbbf24; color: #000; }
+    .risk-high { background: #f97316; color: white; }
+    .risk-critical { background: #dc2626; color: white; animation: pulse-critical 1s infinite; border: 2px solid #ff0000; }
+    
+    /* Prediction card - Dark theme */
+    .prediction-card {
+        background: rgba(15,23,42,0.9);
+        border-radius: 12px;
+        padding: 1.5rem;
+        border-left: 5px solid #00d4ff;
+        margin: 0.8rem 0;
+        box-shadow: 0 0 30px rgba(0,212,255,0.3), inset 0 0 40px rgba(0,100,255,0.1);
+        color: #e2e8f0;
     }
-    .ml-action-exit {
-        border-left-color: #8b5cf6;
-        background: #faf5ff;
+    
+    .prediction-card.exit {
+        border-left-color: #a855f7;
+        box-shadow: 0 0 30px rgba(168,85,247,0.3), inset 0 0 40px rgba(168,85,247,0.1);
     }
-    .ml-action-header {
+    
+    .prediction-card.critical {
+        border-left-color: #dc2626;
+        background: rgba(40,0,0,0.9);
+        box-shadow: 0 0 40px rgba(220,38,38,0.5), inset 0 0 40px rgba(255,0,0,0.15);
+    }
+    
+    /* Recommendation card - Dark control room */
+    .recommendation {
+        background: rgba(15,23,42,0.8);
+        border-radius: 8px;
+        padding: 1rem 1.2rem;
+        margin: 0.8rem 0;
+        border-left: 5px solid #00d4ff;
+        box-shadow: 0 0 20px rgba(0,212,255,0.25);
+        color: #e2e8f0;
+        font-size: 1.05rem;
+    }
+    
+    .recommendation.urgent {
+        border-left-color: #dc2626;
+        background: rgba(40,0,0,0.8);
+        box-shadow: 0 0 30px rgba(220,38,38,0.4);
+        animation: pulse-critical 2s infinite;
+    }
+    
+    .recommendation.high {
+        border-left-color: #f59e0b;
+        background: rgba(40,30,0,0.8);
+        box-shadow: 0 0 25px rgba(245,158,11,0.3);
+    }
+    
+    /* Resource state - Digital display style */
+    .resource-state {
         display: flex;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 6px;
-    }
-    .ml-time { 
-        background: #e2e8f0; 
-        padding: 2px 8px; 
-        border-radius: 4px; 
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: #475569;
-    }
-    .ml-badge {
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        text-transform: uppercase;
-    }
-    .ml-badge-moderate { background: #fef3c7; color: #92400e; }
-    .ml-badge-strong { background: #fee2e2; color: #991b1b; }
-    .ml-badge-entry { background: #dbeafe; color: #1e40af; }
-    .ml-badge-exit { background: #ede9fe; color: #5b21b6; }
-    .ml-details {
-        color: #64748b;
-        font-size: 0.85rem;
-        margin-top: 4px;
-    }
-    .ml-details b { color: #334155; }
-    .ml-action-taken {
-        background: #f1f5f9;
-        padding: 6px 10px;
-        border-radius: 6px;
-        margin-top: 8px;
-        font-size: 0.82rem;
-        color: #475569;
+        justify-content: space-between;
+        padding: 0.8rem 1.2rem;
+        background: rgba(0,20,40,0.8);
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border: 1px solid rgba(0,212,255,0.3);
+        box-shadow: 0 0 15px rgba(0,212,255,0.15);
     }
     
-    /* Phase indicators */
+    .resource-value {
+        font-size: 1.8rem;
+        font-weight: 900;
+        color: #00d4ff;
+        text-shadow: 0 0 10px rgba(0,212,255,0.8);
+        font-family: 'Courier New', monospace;
+    }
+    
+    /* Phase indicators - High visibility */
     .phase-badge {
         display: inline-block;
-        padding: 0.3rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.85rem;
+        padding: 0.5rem 1.5rem;
+        border-radius: 25px;
+        font-weight: 900;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        box-shadow: 0 0 20px currentColor;
+        border: 2px solid currentColor;
     }
-    .phase-early { background: #e3f2fd; color: #1565c0; }
-    .phase-building { background: #fff3e0; color: #e65100; }
-    .phase-peak { background: #ffebee; color: #c62828; }
-    .phase-match { background: #e8f5e9; color: #2e7d32; }
-    .phase-exit { background: #f3e5f5; color: #7b1fa2; }
+    .phase-early { background: rgba(59,130,246,0.2); color: #60a5fa; border-color: #3b82f6; }
+    .phase-building { background: rgba(251,191,36,0.2); color: #fbbf24; border-color: #f59e0b; }
+    .phase-peak { background: rgba(239,68,68,0.2); color: #ff6b6b; border-color: #dc2626; animation: pulse-critical 2s infinite; }
+    .phase-match { background: rgba(16,185,129,0.2); color: #10b981; border-color: #059669; }
+    .phase-exit { background: rgba(168,85,247,0.2); color: #a855f7; border-color: #8b5cf6; }
     
-    /* Card containers */
-    .stat-card {
-        background: linear-gradient(145deg, #ffffff, #f5f5f5);
+    /* ML Action log - Dark theme */
+    .ml-action {
+        background: rgba(15,23,42,0.8);
+        border-left: 5px solid #00d4ff;
+        padding: 12px 16px;
+        margin: 10px 0;
+        border-radius: 0 8px 8px 0;
+        font-size: 1rem;
+        color: #e2e8f0;
+        box-shadow: 0 0 15px rgba(0,212,255,0.2);
+    }
+    
+    .ml-action.strong {
+        background: rgba(40,0,0,0.8);
+        border-left-color: #dc2626;
+        box-shadow: 0 0 25px rgba(220,38,38,0.3);
+    }
+    
+    .ml-action.exit-action {
+        border-left-color: #a855f7;
+        background: rgba(30,15,40,0.8);
+        box-shadow: 0 0 15px rgba(168,85,247,0.2);
+    }
+    
+    .ml-badge {
+        display: inline-block;
+        padding: 4px 14px;
         border-radius: 15px;
-        padding: 1.5rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-        border: 1px solid #e0e0e0;
+        font-size: 0.85rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        margin-right: 8px;
+        border: 1px solid currentColor;
+        letter-spacing: 1px;
     }
     
-    /* Animations */
+    .ml-badge-moderate { background: rgba(251,191,36,0.3); color: #fbbf24; border-color: #f59e0b; }
+    .ml-badge-strong { background: rgba(220,38,38,0.3); color: #ff6b6b; border-color: #dc2626; }
+    .ml-badge-entry { background: rgba(59,130,246,0.3); color: #60a5fa; border-color: #3b82f6; }
+    .ml-badge-exit { background: rgba(168,85,247,0.3); color: #a855f7; border-color: #8b5cf6; }
+    
+    /* Animations - Control room style */
     @keyframes blink {
-        0%, 50% { opacity: 1; }
-        51%, 100% { opacity: 0.3; }
+        0%, 50% { opacity: 1; transform: scale(1); }
+        51%, 100% { opacity: 0.4; transform: scale(0.9); }
     }
     
-    @keyframes pulse {
-        0% { box-shadow: 0 4px 20px rgba(255,65,108,0.4); }
-        50% { box-shadow: 0 4px 30px rgba(255,65,108,0.7); }
-        100% { box-shadow: 0 4px 20px rgba(255,65,108,0.4); }
+    @keyframes pulse-critical {
+        0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 40px currentColor; }
+        50% { opacity: 0.9; transform: scale(1.02); box-shadow: 0 0 60px currentColor; }
     }
     
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    /* Custom scrollbar - Dark theme */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: rgba(15,23,42,0.5); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,212,255,0.4); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,212,255,0.6); }
+    
+    /* Streamlit overrides - Dark theme */
+    .stMetric { background: rgba(15,23,42,0.6); padding: 1rem; border-radius: 10px; border: 1px solid rgba(0,212,255,0.2); }
+    .stMetric label { color: #60a5fa !important; font-size: 1rem !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 1px; }
+    .stMetric [data-testid="stMetricValue"] { color: #00d4ff !important; font-size: 2rem !important; font-weight: 900 !important; text-shadow: 0 0 15px rgba(0,212,255,0.6); }
+    .stMetric [data-testid="stMetricDelta"] { color: #10b981 !important; font-weight: 700 !important; }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] { background: rgba(15,23,42,0.8); border-radius: 10px; padding: 0.5rem; }
+    .stTabs [data-baseweb="tab"] { color: #60a5fa; font-weight: 700; font-size: 1.1rem; }
+    .stTabs [data-baseweb="tab-highlight"] { background: #00d4ff; }
+    
+    /* Dataframe styling */
+    .stDataFrame { background: rgba(15,23,42,0.8); border-radius: 10px; }
+    
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
 # ============ API & CONFIG ============
 API_URL = "http://localhost:8000"
 
-# Session state initialization
+# Initialize session state
 if 'auto_refresh' not in st.session_state:
     st.session_state.auto_refresh = True
 if 'refresh_interval' not in st.session_state:
@@ -217,6 +346,8 @@ if 'sim_start_time' not in st.session_state:
     st.session_state.sim_start_time = None
 if 'last_file_mod' not in st.session_state:
     st.session_state.last_file_mod = None
+if 'predictor' not in st.session_state:
+    st.session_state.predictor = StadiumRiskPredictor() if StadiumRiskPredictor else None
 
 
 # ============ HELPER FUNCTIONS ============
@@ -254,315 +385,308 @@ def get_realtime_slice(data):
     return data[data['time'] <= sim_time].copy(), sim_time
 
 
-def get_phase_badge(time_min):
+def get_phase_info(time_min):
     """Get the current phase based on simulation time."""
     if time_min < 60:
-        return '<span class="phase-badge phase-early">🌅 Early Arrivals</span>'
+        return 'early', '🌅 Early Arrivals', 'phase-early'
     elif time_min < 120:
-        return '<span class="phase-badge phase-building">📈 Building Up</span>'
+        return 'building', '📈 Building Up', 'phase-building'
     elif time_min < 180:
-        return '<span class="phase-badge phase-peak">🔥 Peak Rush</span>'
+        return 'peak', '🔥 Peak Rush', 'phase-peak'
     elif time_min < 300:
-        return '<span class="phase-badge phase-match">⚽ Match Time</span>'
+        return 'match', '⚽ Match Time', 'phase-match'
     else:
-        return '<span class="phase-badge phase-exit">🚪 Exit Flow</span>'
+        return 'exit', '🚪 Exit Flow', 'phase-exit'
 
 
-def get_alert_status(data):
-    """Determine the current alert status based on queue and wait times."""
+def get_predictions(data):
+    """Get ML predictions for current state."""
+    if data is None or len(data) == 0 or st.session_state.predictor is None:
+        return None, None, None
+    
+    latest = data.iloc[-1]
+    predictor = st.session_state.predictor
+    
+    entry_pred, exit_pred = predictor.predict_risk(
+        current_time=latest.get('time', 0),
+        security_queue=int(latest.get('security_queue', 0)),
+        turnstile_queue=int(latest.get('turnstile_queue', 0)),
+        exit_queue=int(latest.get('exit_queue', 0)),
+        avg_security_wait=latest.get('avg_security_wait', 0),
+        avg_turnstile_wait=latest.get('avg_turnstile_wait', 0),
+        avg_exit_wait=latest.get('avg_exit_wait', 0),
+        arrival_rate=latest.get('arrival_rate', 0),
+        exit_rate=latest.get('exit_rate', 0),
+        fans_in_stadium=int(latest.get('fans_in_stadium', 0))
+    )
+    
+    # Get current resource state (use values from data if available)
+    resources = {
+        'active_security': int(latest.get('active_security', 30)),
+        'max_security': 80,
+        'active_turnstiles': int(latest.get('active_turnstiles', 20)),
+        'max_turnstiles': 60,
+        'active_exit_gates': int(latest.get('active_exit_gates', 25)),
+        'max_exit_gates': 60,
+        'active_vendors': int(latest.get('active_vendors', 40)),
+        'max_vendors': 150
+    }
+    
+    recommendations = predictor.get_recommendations(entry_pred, exit_pred, resources)
+    
+    return entry_pred, exit_pred, recommendations
+
+
+def get_alert_status(data, entry_pred=None, exit_pred=None):
+    """Determine the current alert status."""
     if data is None or len(data) == 0:
         return "unknown", "⚪ Waiting for simulation data..."
     
+    # Use ML predictions if available
+    if entry_pred and exit_pred:
+        max_risk = max(entry_pred.risk_score, exit_pred.risk_score)
+        primary = "EXIT" if exit_pred.risk_score > entry_pred.risk_score else "ENTRY"
+        
+        if max_risk >= 0.75:
+            return "critical", f"🚨 CRITICAL {primary} CONGESTION | Risk: {max_risk:.0%} | Immediate action required"
+        elif max_risk >= 0.55:
+            return "warning", f"⚠️ HIGH {primary} LOAD | Risk: {max_risk:.0%} | Monitoring closely"
+        else:
+            return "ok", f"✅ OPTIMAL FLOW | Entry: {entry_pred.risk_score:.0%} | Exit: {exit_pred.risk_score:.0%}"
+    
+    # Fallback to raw data
     latest = data.iloc[-1]
     total_queue = latest.get('turnstile_queue', 0) + latest.get('security_queue', 0)
     total_wait = latest.get('avg_turnstile_wait', 0) + latest.get('avg_security_wait', 0)
     
-    if total_queue > 8000 or total_wait > 25:
-        return "critical", f"🚨 CRITICAL CONGESTION | Total Queue: {int(total_queue):,} fans | Wait: {total_wait:.1f} min"
-    elif total_queue > 4000 or total_wait > 15:
-        return "warning", f"⚠️ HIGH LOAD | Total Queue: {int(total_queue):,} fans | Wait: {total_wait:.1f} min"
+    if total_queue > 5000 or total_wait > 25:
+        return "critical", f"🚨 CRITICAL | Queue: {int(total_queue):,} | Wait: {total_wait:.1f} min"
+    elif total_queue > 3000 or total_wait > 15:
+        return "warning", f"⚠️ WARNING | Queue: {int(total_queue):,} | Wait: {total_wait:.1f} min"
     else:
-        return "ok", f"✅ OPTIMAL FLOW | Total Queue: {int(total_queue):,} fans | Wait: {total_wait:.1f} min"
+        return "ok", f"✅ OPTIMAL | Queue: {int(total_queue):,} | Wait: {total_wait:.1f} min"
 
 
 # ============ CHART FUNCTIONS ============
-def create_queue_comparison_chart(data):
-    """Create side-by-side queue comparison chart."""
-    if data is None or len(data) == 0:
-        return None
-    
+def create_risk_gauge(entry_risk, exit_risk):
+    """Create dual risk gauge chart."""
     fig = make_subplots(
         rows=1, cols=2,
-        subplot_titles=('🔒 Security Queue', '🚪 Turnstile Queue'),
-        horizontal_spacing=0.08
+        specs=[[{'type': 'indicator'}, {'type': 'indicator'}]],
+        subplot_titles=['Entry Risk', 'Exit Risk']
     )
     
-    # Security queue
-    if 'security_queue' in data.columns:
-        fig.add_trace(go.Scatter(
-            x=data['time'], y=data['security_queue'],
-            mode='lines', name='Security Queue',
-            line=dict(color='#9b59b6', width=2.5),
-            fill='tozeroy', fillcolor='rgba(155,89,182,0.2)'
-        ), row=1, col=1)
+    # Entry risk gauge
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=entry_risk * 100,
+        number={'suffix': '%', 'font': {'size': 28}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1},
+            'bar': {'color': '#3b82f6'},
+            'bgcolor': 'white',
+            'borderwidth': 2,
+            'bordercolor': '#e2e8f0',
+            'steps': [
+                {'range': [0, 35], 'color': '#d1fae5'},
+                {'range': [35, 55], 'color': '#fef3c7'},
+                {'range': [55, 75], 'color': '#fed7aa'},
+                {'range': [75, 100], 'color': '#fecaca'}
+            ],
+            'threshold': {
+                'line': {'color': '#dc2626', 'width': 4},
+                'thickness': 0.75,
+                'value': 75
+            }
+        }
+    ), row=1, col=1)
     
-    # Turnstile queue
-    if 'turnstile_queue' in data.columns:
-        fig.add_trace(go.Scatter(
-            x=data['time'], y=data['turnstile_queue'],
-            mode='lines', name='Turnstile Queue',
-            line=dict(color='#3498db', width=2.5),
-            fill='tozeroy', fillcolor='rgba(52,152,219,0.2)'
-        ), row=1, col=2)
-        
-        # Add current position marker
-        if len(data) > 0:
-            latest = data.iloc[-1]
-            fig.add_trace(go.Scatter(
-                x=[latest['time']], y=[latest['turnstile_queue']],
-                mode='markers', marker=dict(size=14, color='#e74c3c', symbol='circle'),
-                name='Current', showlegend=False
-            ), row=1, col=2)
+    # Exit risk gauge
+    fig.add_trace(go.Indicator(
+        mode="gauge+number",
+        value=exit_risk * 100,
+        number={'suffix': '%', 'font': {'size': 28}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1},
+            'bar': {'color': '#8b5cf6'},
+            'bgcolor': 'white',
+            'borderwidth': 2,
+            'bordercolor': '#e2e8f0',
+            'steps': [
+                {'range': [0, 35], 'color': '#d1fae5'},
+                {'range': [35, 55], 'color': '#fef3c7'},
+                {'range': [55, 75], 'color': '#fed7aa'},
+                {'range': [75, 100], 'color': '#fecaca'}
+            ],
+            'threshold': {
+                'line': {'color': '#dc2626', 'width': 4},
+                'thickness': 0.75,
+                'value': 75
+            }
+        }
+    ), row=1, col=2)
     
     fig.update_layout(
-        height=300,
-        showlegend=False,
-        margin=dict(t=50, b=40, l=50, r=30),
-        plot_bgcolor='rgba(0,0,0,0)',
+        height=220,
+        margin=dict(t=40, b=20, l=30, r=30),
         paper_bgcolor='rgba(0,0,0,0)'
     )
-    fig.update_xaxes(title_text='Time (min)', gridcolor='rgba(0,0,0,0.1)')
-    fig.update_yaxes(title_text='Queue Size', gridcolor='rgba(0,0,0,0.1)')
     
     return fig
 
 
-def create_exit_queue_chart(data):
-    """Create exit queue and wait time chart."""
+def create_queue_chart(data):
+    """Create queue comparison chart."""
     if data is None or len(data) == 0:
         return None
     
     fig = make_subplots(
         rows=1, cols=2,
-        subplot_titles=('🚪 Exit Queue', '⏱️ Exit Wait Time'),
-        horizontal_spacing=0.08
+        subplot_titles=('🔒 Entry Queues', '🚪 Exit Queue'),
+        horizontal_spacing=0.1
     )
+    
+    # Entry queues (stacked)
+    if 'security_queue' in data.columns:
+        fig.add_trace(go.Scatter(
+            x=data['time'], y=data['security_queue'],
+            mode='lines', name='Security',
+            line=dict(color='#8b5cf6', width=2),
+            fill='tozeroy', fillcolor='rgba(139,92,246,0.2)'
+        ), row=1, col=1)
+    
+    if 'turnstile_queue' in data.columns:
+        fig.add_trace(go.Scatter(
+            x=data['time'], y=data['turnstile_queue'],
+            mode='lines', name='Turnstile',
+            line=dict(color='#3b82f6', width=2),
+            fill='tozeroy', fillcolor='rgba(59,130,246,0.2)'
+        ), row=1, col=1)
     
     # Exit queue
     if 'exit_queue' in data.columns:
         fig.add_trace(go.Scatter(
             x=data['time'], y=data['exit_queue'],
-            mode='lines', name='Exit Queue',
-            line=dict(color='#e74c3c', width=2.5),
-            fill='tozeroy', fillcolor='rgba(231,76,60,0.2)'
-        ), row=1, col=1)
-    
-    # Exit wait time
-    if 'avg_exit_wait' in data.columns:
-        fig.add_trace(go.Scatter(
-            x=data['time'], y=data['avg_exit_wait'],
-            mode='lines', name='Exit Wait',
-            line=dict(color='#f39c12', width=2.5),
-            fill='tozeroy', fillcolor='rgba(243,156,18,0.2)'
+            mode='lines', name='Exit',
+            line=dict(color='#ef4444', width=2.5),
+            fill='tozeroy', fillcolor='rgba(239,68,68,0.2)'
         ), row=1, col=2)
         
-        # Add critical line
-        fig.add_hline(y=30, line_dash='dash', line_color='#d32f2f',
-                      annotation_text='Critical', row=1, col=2)
+        # Add current marker
+        if len(data) > 0:
+            latest = data.iloc[-1]
+            fig.add_trace(go.Scatter(
+                x=[latest['time']], y=[latest['exit_queue']],
+                mode='markers',
+                marker=dict(size=12, color='#dc2626', symbol='circle'),
+                name='Current', showlegend=False
+            ), row=1, col=2)
+    
+    # Add kickoff line
+    fig.add_vline(x=180, line_dash='dash', line_color='#22c55e', line_width=2, row=1, col=1)
+    fig.add_vline(x=180, line_dash='dash', line_color='#22c55e', line_width=2, row=1, col=2)
     
     fig.update_layout(
         height=280,
-        showlegend=False,
+        showlegend=True,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         margin=dict(t=50, b=40, l=50, r=30),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
     )
-    fig.update_xaxes(title_text='Time (min)', gridcolor='rgba(0,0,0,0.1)')
+    fig.update_xaxes(title_text='Time (min)', gridcolor='rgba(0,0,0,0.08)')
+    fig.update_yaxes(title_text='Queue Size', gridcolor='rgba(0,0,0,0.08)')
     
     return fig
 
 
-def create_wait_time_gauge(current_wait, max_wait=35):
-    """Create a gauge chart for total wait time."""
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
-        value=current_wait,
-        number={'suffix': ' min', 'font': {'size': 32, 'color': '#333'}},
-        delta={'reference': 5, 'position': 'bottom', 'relative': False},
-        title={'text': 'Total Wait Time', 'font': {'size': 16}},
-        gauge={
-            'axis': {'range': [0, max_wait], 'tickwidth': 2},
-            'bar': {'color': '#667eea', 'thickness': 0.8},
-            'bgcolor': 'white',
-            'borderwidth': 2,
-            'bordercolor': '#ddd',
-            'steps': [
-                {'range': [0, 5], 'color': '#c8e6c9'},
-                {'range': [5, 10], 'color': '#fff9c4'},
-                {'range': [10, 20], 'color': '#ffccbc'},
-                {'range': [20, max_wait], 'color': '#ffcdd2'}
-            ],
-            'threshold': {
-                'line': {'color': '#d32f2f', 'width': 4},
-                'thickness': 0.8,
-                'value': 20
-            }
-        }
-    ))
-    
-    fig.update_layout(
-        height=240,
-        margin=dict(t=40, b=20, l=40, r=40),
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
-    return fig
-
-
-def create_flow_rate_chart(data):
-    """Create arrival and exit flow rate chart."""
-    if data is None or 'arrival_rate' not in data.columns:
-        return None
-    
-    fig = go.Figure()
-    
-    # Arrival rate
-    fig.add_trace(go.Scatter(
-        x=data['time'], y=data['arrival_rate'],
-        mode='lines', name='Arrivals',
-        line=dict(color='#2196f3', width=2.5),
-        fill='tozeroy', fillcolor='rgba(33,150,243,0.15)'
-    ))
-    
-    # Exit rate
-    if 'exit_rate' in data.columns:
-        fig.add_trace(go.Scatter(
-            x=data['time'], y=data['exit_rate'],
-            mode='lines', name='Exits',
-            line=dict(color='#f44336', width=2.5),
-            fill='tozeroy', fillcolor='rgba(244,67,54,0.15)'
-        ))
-    
-    # Kickoff line
-    fig.add_vline(
-        x=180, line_dash='dash', line_color='#4caf50', line_width=2,
-        annotation_text='⚽ KICKOFF', annotation_position='top'
-    )
-    
-    fig.update_layout(
-        title={'text': '👥 Fan Flow Rate Over Time', 'font': {'size': 16}},
-        xaxis_title='Time (min)',
-        yaxis_title='Fans per minute',
-        height=300,
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        hovermode='x unified',
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
-    fig.update_xaxes(gridcolor='rgba(0,0,0,0.1)')
-    fig.update_yaxes(gridcolor='rgba(0,0,0,0.1)')
-    
-    return fig
-
-
-def create_utilization_chart(data):
-    """Create resource utilization bar chart."""
-    if data is None or len(data) == 0:
-        return None
-    
-    latest = data.iloc[-1]
-    
-    resources = ['Security', 'Turnstiles', 'Vendors', 'Exit Gates', 'Parking']
-    utilizations = [
-        latest.get('security_utilization', 0) * 100,
-        latest.get('turnstile_utilization', 0) * 100,
-        latest.get('vendor_utilization', 0) * 100,
-        latest.get('exit_utilization', 0) * 100,
-        latest.get('parking_utilization', 0) * 100
-    ]
-    
-    # Color based on utilization level
-    colors = []
-    for u in utilizations:
-        if u < 60:
-            colors.append('#4caf50')  # Green
-        elif u < 80:
-            colors.append('#ff9800')  # Orange
-        else:
-            colors.append('#f44336')  # Red
-    
-    fig = go.Figure(go.Bar(
-        y=resources,
-        x=utilizations,
-        orientation='h',
-        marker_color=colors,
-        text=[f'{u:.0f}%' for u in utilizations],
-        textposition='inside',
-        textfont=dict(color='white', size=13, family='Arial Black')
-    ))
-    
-    # Add threshold line
-    fig.add_vline(x=85, line_dash='dash', line_color='#d32f2f', line_width=2,
-                  annotation_text='Capacity', annotation_position='top right')
-    
-    fig.update_layout(
-        title={'text': '📊 Resource Utilization', 'font': {'size': 16}},
-        xaxis=dict(range=[0, 100], title='Utilization %'),
-        height=280,
-        margin=dict(l=100),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
-    )
-    
-    return fig
-
-
-def create_wait_trend_chart(data):
+def create_wait_time_chart(data):
     """Create wait time trend chart."""
     if data is None or len(data) == 0:
         return None
     
     fig = go.Figure()
     
-    # Security wait
-    if 'avg_security_wait' in data.columns:
+    # Entry wait (combined)
+    if 'avg_security_wait' in data.columns and 'avg_turnstile_wait' in data.columns:
+        entry_wait = data['avg_security_wait'] + data['avg_turnstile_wait']
         fig.add_trace(go.Scatter(
-            x=data['time'], y=data['avg_security_wait'],
-            mode='lines', name='Security Wait',
-            line=dict(color='#9b59b6', width=2.5)
+            x=data['time'], y=entry_wait,
+            mode='lines', name='Entry Wait',
+            line=dict(color='#3b82f6', width=2.5),
+            fill='tozeroy', fillcolor='rgba(59,130,246,0.15)'
         ))
     
-    # Turnstile wait
-    if 'avg_turnstile_wait' in data.columns:
+    # Exit wait
+    if 'avg_exit_wait' in data.columns:
         fig.add_trace(go.Scatter(
-            x=data['time'], y=data['avg_turnstile_wait'],
-            mode='lines', name='Turnstile Wait',
-            line=dict(color='#3498db', width=2.5)
+            x=data['time'], y=data['avg_exit_wait'],
+            mode='lines', name='Exit Wait',
+            line=dict(color='#8b5cf6', width=2.5),
+            fill='tozeroy', fillcolor='rgba(139,92,246,0.15)'
         ))
     
-    # Target and critical lines
-    fig.add_hline(y=10, line_dash='dot', line_color='#27ae60',
-                  annotation_text='Target (10 min)', annotation_position='right')
-    fig.add_hline(y=20, line_dash='dash', line_color='#e74c3c',
-                  annotation_text='Critical (20 min)', annotation_position='right')
+    # Critical lines
+    fig.add_hline(y=15, line_dash='dot', line_color='#f59e0b', annotation_text='Warning (15min)')
+    fig.add_hline(y=25, line_dash='dash', line_color='#dc2626', annotation_text='Critical (25min)')
     
     fig.update_layout(
         title={'text': '⏱️ Wait Time Trends', 'font': {'size': 16}},
         xaxis_title='Time (min)',
         yaxis_title='Wait Time (min)',
-        height=300,
+        height=280,
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         hovermode='x unified',
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
     )
-    fig.update_xaxes(gridcolor='rgba(0,0,0,0.1)')
-    fig.update_yaxes(gridcolor='rgba(0,0,0,0.1)')
+    fig.update_xaxes(gridcolor='rgba(0,0,0,0.08)')
+    fig.update_yaxes(gridcolor='rgba(0,0,0,0.08)')
+    
+    return fig
+
+
+def create_flow_chart(data):
+    """Create arrival/exit flow chart."""
+    if data is None or 'arrival_rate' not in data.columns:
+        return None
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=data['time'], y=data['arrival_rate'],
+        mode='lines', name='Arrivals',
+        line=dict(color='#22c55e', width=2),
+        fill='tozeroy', fillcolor='rgba(34,197,94,0.15)'
+    ))
+    
+    if 'exit_rate' in data.columns:
+        fig.add_trace(go.Scatter(
+            x=data['time'], y=data['exit_rate'],
+            mode='lines', name='Exits',
+            line=dict(color='#ef4444', width=2),
+            fill='tozeroy', fillcolor='rgba(239,68,68,0.15)'
+        ))
+    
+    # Kickoff marker
+    fig.add_vline(x=180, line_dash='dash', line_color='#22c55e', line_width=2,
+                  annotation_text='⚽ Kickoff', annotation_position='top')
+    
+    fig.update_layout(
+        title={'text': '👥 Fan Flow Rate', 'font': {'size': 16}},
+        xaxis_title='Time (min)',
+        yaxis_title='Fans/min',
+        height=250,
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
     
     return fig
 
 
 def create_stadium_fill_chart(data):
-    """Create stadium fill progression chart."""
+    """Create stadium fill chart."""
     if data is None or 'fans_in_stadium' not in data.columns:
         return None
     
@@ -570,21 +694,20 @@ def create_stadium_fill_chart(data):
     
     fig.add_trace(go.Scatter(
         x=data['time'], y=data['fans_in_stadium'],
-        mode='lines', name='Fans in Stadium',
-        line=dict(color='#667eea', width=3),
-        fill='tozeroy', fillcolor='rgba(102,126,234,0.2)'
+        mode='lines', name='In Stadium',
+        line=dict(color='#3b82f6', width=3),
+        fill='tozeroy', fillcolor='rgba(59,130,246,0.2)'
     ))
     
     # Capacity line
-    capacity = data['fans_in_stadium'].max() * 1.1 if len(data) > 0 else 70000
-    fig.add_hline(y=68000, line_dash='dash', line_color='#333',
+    fig.add_hline(y=68000, line_dash='dash', line_color='#6b7280',
                   annotation_text='Capacity: 68,000')
     
     fig.update_layout(
-        title={'text': '🏟️ Stadium Fill Progress', 'font': {'size': 16}},
+        title={'text': '🏟️ Stadium Occupancy', 'font': {'size': 16}},
         xaxis_title='Time (min)',
-        yaxis_title='Fans in Stadium',
-        height=300,
+        yaxis_title='Fans',
+        height=250,
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)'
     )
@@ -593,87 +716,114 @@ def create_stadium_fill_chart(data):
 
 
 def generate_ml_actions(data):
-    """Generate ML control actions with gate state tracking."""
+    """Generate ML control actions with proper tracking."""
     if data is None or len(data) < 10:
         return []
     
     actions = []
     kickoff_time = 180
-    match_end_time = kickoff_time + 120  # t=300
+    match_end_time = kickoff_time + 120
     
-    # Track gate states (starting values)
-    security_gates = 30
-    entry_gates = 20  # turnstiles
-    exit_gates = 25
-    vendors = 40
+    # Check for capacity columns
+    has_capacity_data = ('active_security' in data.columns and 
+                         'active_turnstiles' in data.columns and 
+                         'active_exit_gates' in data.columns)
     
-    # Check more frequently to catch exit spikes
+    # Initialize gate states
+    if has_capacity_data:
+        security_gates = int(data.iloc[0].get('active_security', 30))
+        entry_gates = int(data.iloc[0].get('active_turnstiles', 20))
+        exit_gates = int(data.iloc[0].get('active_exit_gates', 25))
+        vendors = int(data.iloc[0].get('active_vendors', 40))
+    else:
+        security_gates = 30
+        entry_gates = 20
+        exit_gates = 25
+        vendors = 40
+    
     check_points = range(5, len(data), max(1, len(data)//50))
     
     for idx in check_points:
         row = data.iloc[idx]
         t = row['time']
         
-        # Entry metrics
+        # Metrics
         sec_q = row.get('security_queue', 0)
         turn_q = row.get('turnstile_queue', 0)
-        sec_wait = row.get('avg_security_wait', 0)
-        turn_wait = row.get('avg_turnstile_wait', 0)
         entry_queue = sec_q + turn_q
-        entry_wait = max(sec_wait, turn_wait)
-        
-        # Exit metrics
+        entry_wait = row.get('avg_security_wait', 0) + row.get('avg_turnstile_wait', 0)
         exit_q = row.get('exit_queue', 0)
         exit_wait = row.get('avg_exit_wait', 0)
         
-        # Risk calculations
+        # Risk scores
         entry_risk = (min(entry_queue/5000, 1)*0.4 + min(entry_wait/15, 1)*0.5 + 
                      (0.1 if t < kickoff_time and kickoff_time-t < 60 else 0))
         exit_risk = (min(exit_q/2000, 1)*0.4 + min(exit_wait/10, 1)*0.5 + 
                     (0.2 if t > match_end_time - 30 else 0))
         
-        is_exit_phase = t > kickoff_time + 90  # After halftime (t=270)
-        
-        # Priority: Check EXIT first if queue is building
-        if exit_q > 500:  # Exit queue detected
-            if exit_risk > 0.6:
+        if has_capacity_data and idx > 0:
+            # Read actual changes from data
+            security_gates = int(row.get('active_security', security_gates))
+            entry_gates = int(row.get('active_turnstiles', entry_gates))
+            exit_gates = int(row.get('active_exit_gates', exit_gates))
+            vendors = int(row.get('active_vendors', vendors))
+            
+            prev_row = data.iloc[idx-1]
+            prev_security = int(prev_row.get('active_security', security_gates))
+            prev_entry = int(prev_row.get('active_turnstiles', entry_gates))
+            prev_exit = int(prev_row.get('active_exit_gates', exit_gates))
+            prev_vendors = int(prev_row.get('active_vendors', vendors))
+            
+            if exit_gates != prev_exit:
+                actions.append({
+                    'time': t, 'type': 'STRONG' if exit_risk > 0.6 else 'MODERATE',
+                    'risk_type': 'EXIT', 'risk': exit_risk, 'queue': int(exit_q),
+                    'wait': exit_wait, 'decision': f'Exit gates {prev_exit}→{exit_gates}',
+                    'security': security_gates, 'entry': entry_gates, 
+                    'exit': exit_gates, 'vendors': vendors
+                })
+            elif security_gates != prev_security or entry_gates != prev_entry or vendors != prev_vendors:
+                changes = []
+                if security_gates != prev_security:
+                    changes.append(f'Security {prev_security}→{security_gates}')
+                if entry_gates != prev_entry:
+                    changes.append(f'Entry {prev_entry}→{entry_gates}')
+                if vendors != prev_vendors:
+                    changes.append(f'Vendors {prev_vendors}→{vendors}')
+                
+                actions.append({
+                    'time': t, 'type': 'STRONG' if entry_risk > 0.7 else 'MODERATE',
+                    'risk_type': 'ENTRY', 'risk': entry_risk, 'queue': int(entry_queue),
+                    'wait': entry_wait, 'decision': ', '.join(changes),
+                    'security': security_gates, 'entry': entry_gates,
+                    'exit': exit_gates, 'vendors': vendors
+                })
+        else:
+            # Synthetic actions based on risk
+            if exit_q > 500 and exit_risk > 0.4:
                 old_exits = exit_gates
-                exit_gates = min(exit_gates + 10, 80)
+                increase = 10 if exit_risk > 0.6 else 5
+                exit_gates = min(exit_gates + increase, 80)
                 actions.append({
-                    'time': t, 'type': 'STRONG', 'risk_type': 'EXIT',
-                    'risk': exit_risk, 'queue': int(exit_q), 'wait': exit_wait,
-                    'decision': f'+10 exit gates ({old_exits}->{exit_gates})',
-                    'security': security_gates, 'entry': entry_gates, 'exit': exit_gates, 'vendors': vendors
+                    'time': t, 'type': 'STRONG' if exit_risk > 0.6 else 'MODERATE',
+                    'risk_type': 'EXIT', 'risk': exit_risk, 'queue': int(exit_q),
+                    'wait': exit_wait, 'decision': f'+{increase} exit gates ({old_exits}→{exit_gates})',
+                    'security': security_gates, 'entry': entry_gates,
+                    'exit': exit_gates, 'vendors': vendors
                 })
-            elif exit_risk > 0.4:
-                old_exits = exit_gates
-                exit_gates = min(exit_gates + 5, 80)
-                actions.append({
-                    'time': t, 'type': 'MODERATE', 'risk_type': 'EXIT',
-                    'risk': exit_risk, 'queue': int(exit_q), 'wait': exit_wait,
-                    'decision': f'+5 exit gates ({old_exits}->{exit_gates})',
-                    'security': security_gates, 'entry': entry_gates, 'exit': exit_gates, 'vendors': vendors
-                })
-        elif entry_queue > 500:  # Entry queue detected
-            if entry_risk > 0.7:
+            elif entry_queue > 500 and entry_risk > 0.5:
                 old_sec, old_vend = security_gates, vendors
-                security_gates = min(security_gates + 5, 80)
-                vendors = min(vendors + 10, 150)
+                sec_inc = 5 if entry_risk > 0.7 else 3
+                vend_inc = 10 if entry_risk > 0.7 else 5
+                security_gates = min(security_gates + sec_inc, 80)
+                vendors = min(vendors + vend_inc, 150)
                 actions.append({
-                    'time': t, 'type': 'STRONG', 'risk_type': 'ENTRY',
-                    'risk': entry_risk, 'queue': int(entry_queue), 'wait': entry_wait,
-                    'decision': f'Security {old_sec}->{security_gates}, Vendors {old_vend}->{vendors}',
-                    'security': security_gates, 'entry': entry_gates, 'exit': exit_gates, 'vendors': vendors
-                })
-            elif entry_risk > 0.5:
-                old_sec, old_vend = security_gates, vendors
-                security_gates = min(security_gates + 3, 80)
-                vendors = min(vendors + 5, 150)
-                actions.append({
-                    'time': t, 'type': 'MODERATE', 'risk_type': 'ENTRY',
-                    'risk': entry_risk, 'queue': int(entry_queue), 'wait': entry_wait,
-                    'decision': f'Security {old_sec}->{security_gates}, Vendors {old_vend}->{vendors}',
-                    'security': security_gates, 'entry': entry_gates, 'exit': exit_gates, 'vendors': vendors
+                    'time': t, 'type': 'STRONG' if entry_risk > 0.7 else 'MODERATE',
+                    'risk_type': 'ENTRY', 'risk': entry_risk, 'queue': int(entry_queue),
+                    'wait': entry_wait,
+                    'decision': f'Security {old_sec}→{security_gates}, Vendors {old_vend}→{vendors}',
+                    'security': security_gates, 'entry': entry_gates,
+                    'exit': exit_gates, 'vendors': vendors
                 })
     
     return actions
@@ -681,47 +831,56 @@ def generate_ml_actions(data):
 
 # ============ MAIN APPLICATION ============
 def main():
-    # Header
-    st.markdown('<h1 class="main-header">🏟️ Stadium AI Control Center</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Real-time Crowd Management & ML Control System</p>', unsafe_allow_html=True)
+    # Header - Control Room Style
+    st.markdown('<h1 class="main-header">🏟️ STADIUM CONTROL CENTER</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">⚡ MISSION CRITICAL OPERATIONS ⚡ ML-POWERED CROWD MANAGEMENT ⚡ LIVE MONITORING SYSTEM</p>', unsafe_allow_html=True)
     
-    # ============ SIDEBAR ============
+    # ============ LOAD DATA FIRST ============
+    full_data = load_simulation_data()
+    
+    if full_data is not None:
+        data, sim_time = get_realtime_slice(full_data)
+    else:
+        data, sim_time = None, 0
+    
+    # ============ SIDEBAR - CONTROL PANEL ============
     with st.sidebar:
         if st.session_state.auto_refresh:
-            st.markdown('<div class="live-badge"><span class="live-dot"></span>LIVE MONITORING</div>', unsafe_allow_html=True)
+            st.markdown('<div class="live-badge"><span class="live-dot"></span>LIVE</div>', unsafe_allow_html=True)
         
-        st.header("⚙️ Control Panel")
+        st.markdown("## ⚙️ CONTROL PANEL")
         
         # API Status
         api_status = check_api_status()
         if api_status:
-            st.success("🟢 API Server Online")
+            st.success("🟢 API ONLINE", icon="✅")
         else:
-            st.warning("🟡 API Offline - Using Local Mode")
+            st.info("🔵 LOCAL MODE", icon="💻")
         
         st.divider()
         
-        # Display Settings
-        st.subheader("🔄 Display Settings")
-        st.session_state.auto_refresh = st.toggle("Auto Refresh", value=st.session_state.auto_refresh)
-        st.session_state.refresh_interval = st.slider("Refresh Interval (sec)", 1, 10, 2)
+        # Settings
+        st.markdown("### 🔄 DISPLAY SETTINGS")
+        st.session_state.auto_refresh = st.toggle("♻️ Auto Refresh", value=st.session_state.auto_refresh)
+        st.session_state.refresh_interval = st.slider("⏱️ Update Interval (s)", 1, 10, 2)
         
         col1, col2 = st.columns(2)
-        if col1.button("🔄 Refresh Now"):
+        if col1.button("🔄 REFRESH", use_container_width=True):
             st.rerun()
-        if col2.button("⏮️ Reset View"):
+        if col2.button("⏮️ RESET", use_container_width=True):
             st.session_state.sim_start_time = datetime.now()
+            st.session_state.predictor = StadiumRiskPredictor() if StadiumRiskPredictor else None
             st.rerun()
         
         st.divider()
         
-        # Simulation Controls
-        st.subheader("🎮 Simulation Control")
-        num_fans = st.slider("👥 Number of Fans", 20000, 80000, 68000, step=5000)
-        enable_ml = st.toggle("🤖 Enable ML Control", value=True)
+        # Simulation
+        st.markdown("### 🎮 SIMULATION CONTROL")
+        num_fans = st.slider("👥 Total Fans", 20000, 80000, 68000, step=5000)
+        enable_ml = st.toggle("🤖 ML Control System", value=True, help="Enable AI-powered resource management")
         
-        if st.button("▶️ Run New Simulation", type="primary", use_container_width=True):
-            with st.spinner("Running simulation..."):
+        if st.button("▶️ RUN SIMULATION", type="primary", use_container_width=True):
+            with st.spinner("🔄 Running simulation..."):
                 if api_status:
                     try:
                         response = requests.post(
@@ -730,316 +889,273 @@ def main():
                             timeout=300
                         )
                         if response.status_code == 200:
-                            st.success("✅ Simulation completed!")
+                            st.success("✅ SIMULATION COMPLETE!")
                             st.session_state.sim_start_time = datetime.now()
                             time.sleep(1)
                             st.rerun()
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"❌ Error: {e}")
                 else:
-                    # Run locally
                     import subprocess
                     cmd = ['python', 'simulation/run_simulation.py', '--fans', str(num_fans)]
                     if enable_ml:
                         cmd.append('--ml')
                     subprocess.run(cmd, cwd=Path(__file__).parent.parent)
-                    st.success("✅ Simulation completed!")
+                    st.success("✅ SIMULATION COMPLETE!")
                     st.session_state.sim_start_time = datetime.now()
                     time.sleep(1)
                     st.rerun()
         
         st.divider()
-        st.caption("© Stadium AI v2.0 - Enhanced Dashboard")
+        
+        # System info
+        st.markdown("### 📊 SYSTEM STATUS")
+        if data is not None and len(data) > 0:
+            st.metric("📊 Data Points", f"{len(data):,}")
+            st.metric("⏱️ Sim Time", f"{int(sim_time)} min")
+        
+        st.divider()
+        st.caption("⚡ STADIUM AI v3.0")
+        st.caption("🔒 CONTROL ROOM MODE")
     
     # ============ MAIN CONTENT ============
-    # Load data
-    full_data = load_simulation_data()
+    # Get predictions
+    entry_pred, exit_pred, recommendations = get_predictions(data)
     
-    if full_data is not None:
-        data, sim_time = get_realtime_slice(full_data)
-    else:
-        data, sim_time = None, 0
-    
-    # Status Bar
+    # Status Bar - Large control room displays
     if data is not None and len(data) > 0:
-        current_time = data.iloc[-1].get('time', 0)
+        latest = data.iloc[-1]
+        current_time = latest.get('time', 0)
         max_time = full_data['time'].max()
         progress = min(100, (current_time / max_time) * 100) if max_time > 0 else 0
         
-        col1, col2, col3 = st.columns([1, 1, 2])
+        phase_id, phase_label, phase_class = get_phase_info(current_time)
         
-        with col1:
-            hours = int(current_time) // 60
-            mins = int(current_time) % 60
-            st.markdown(f"**⏰ Simulation Time:** `T+{hours}h {mins:02d}m`")
-        
-        with col2:
-            st.markdown(f"**Phase:** {get_phase_badge(current_time)}", unsafe_allow_html=True)
-        
-        with col3:
-            st.progress(progress / 100, text=f"Progress: {progress:.0f}%")
+        st.markdown("")
+        c1, c2, c3, c4 = st.columns([1, 1, 2, 1])
+        with c1:
+            hours, mins = int(current_time) // 60, int(current_time) % 60
+            st.markdown(f"<div style='text-align:center;'><div style='font-size:0.9rem;color:#60a5fa;font-weight:700;'>ELAPSED TIME</div><div style='font-size:2rem;color:#00d4ff;font-weight:900;text-shadow:0 0 15px rgba(0,212,255,0.6);'>T+{hours}h {mins:02d}m</div></div>", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"<div style='text-align:center;padding-top:1rem;'><span class='phase-badge {phase_class}'>{phase_label}</span></div>", unsafe_allow_html=True)
+        with c3:
+            st.markdown(f"<div style='padding-top:1.5rem;'></div>", unsafe_allow_html=True)
+            st.progress(progress / 100, text=f"OPERATION PROGRESS: {progress:.0f}%")
+        with c4:
+            total_fans = int(latest.get('fans_in_stadium', 0))
+            st.markdown(f"<div style='text-align:center;'><div style='font-size:0.9rem;color:#60a5fa;font-weight:700;'>STADIUM</div><div style='font-size:2rem;color:#10b981;font-weight:900;text-shadow:0 0 15px rgba(16,185,129,0.6);'>{total_fans:,}</div></div>", unsafe_allow_html=True)
     
     # Alert Banner
-    status, message = get_alert_status(data)
+    status, message = get_alert_status(data, entry_pred, exit_pred)
     alert_class = 'alert-critical' if status == 'critical' else 'alert-warning' if status == 'warning' else 'alert-ok'
     st.markdown(f'<div class="{alert_class}">{message}</div>', unsafe_allow_html=True)
     
+    st.markdown("")
+    
+    # ============ PREDICTIONS ROW ============
+    if entry_pred and exit_pred:
+        st.markdown("")
+        st.markdown("<h2 style='color:#00d4ff;text-align:center;font-size:2rem;text-transform:uppercase;letter-spacing:3px;text-shadow:0 0 20px rgba(0,212,255,0.6);'>🔮 ML RISK PREDICTIONS</h2>", unsafe_allow_html=True)
+        st.markdown("")
+        
+        pred_col1, pred_col2, pred_col3 = st.columns([1, 1, 1])
+        
+        with pred_col1:
+            # Risk gauges
+            gauge_fig = create_risk_gauge(entry_pred.risk_score, exit_pred.risk_score)
+            st.plotly_chart(gauge_fig, use_container_width=True)
+        
+        with pred_col2:
+            # Entry prediction details
+            entry_level_class = f"risk-{entry_pred.risk_level.value}"
+            st.markdown(f"""
+            <div class="prediction-card {'critical' if entry_pred.risk_level.value == 'critical' else ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <strong>🔒 Entry Risk</strong>
+                    <span class="risk-indicator {entry_level_class}">{entry_pred.risk_level.value}</span>
+                </div>
+                <div style="font-size:0.9rem;color:#64748b;">
+                    <div>📊 Predicted Queue: <b>{entry_pred.predicted_queue:,}</b></div>
+                    <div>⏱️ Predicted Wait: <b>{entry_pred.predicted_wait:.1f} min</b></div>
+                    <div>🎯 Confidence: <b>{entry_pred.confidence:.0%}</b></div>
+                    {f'<div>⚠️ Time to Critical: <b>{entry_pred.time_to_critical:.0f} min</b></div>' if entry_pred.time_to_critical else ''}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with pred_col3:
+            # Exit prediction details
+            exit_level_class = f"risk-{exit_pred.risk_level.value}"
+            st.markdown(f"""
+            <div class="prediction-card exit {'critical' if exit_pred.risk_level.value == 'critical' else ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <strong>🚪 Exit Risk</strong>
+                    <span class="risk-indicator {exit_level_class}">{exit_pred.risk_level.value}</span>
+                </div>
+                <div style="font-size:0.9rem;color:#64748b;">
+                    <div>📊 Predicted Queue: <b>{exit_pred.predicted_queue:,}</b></div>
+                    <div>⏱️ Predicted Wait: <b>{exit_pred.predicted_wait:.1f} min</b></div>
+                    <div>🎯 Confidence: <b>{exit_pred.confidence:.0%}</b></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Recommendations
+        if recommendations:
+            st.markdown("**💡 Recommended Actions:**")
+            for rec in recommendations[:3]:
+                priority_class = "urgent" if rec.priority == "urgent" else "high" if rec.priority == "high" else ""
+                st.markdown(f"""
+                <div class="recommendation {priority_class}">
+                    <div style="display:flex;justify-content:space-between;">
+                        <span>{rec.description}</span>
+                        <span style="color:#64748b;font-size:0.8rem;">↑{rec.expected_improvement:.0f}%</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
     st.markdown("---")
     
-    # Key Metrics Row - Entry metrics
+    # ============ METRICS ROW ============
     if data is not None and len(data) > 0:
         latest = data.iloc[-1]
         
-        st.markdown("**🔒 Entry Metrics**")
-        m1, m2, m3, m4, m5 = st.columns(5)
+        st.markdown("")
+        st.markdown("<h2 style='color:#00d4ff;text-align:center;font-size:2rem;text-transform:uppercase;letter-spacing:3px;text-shadow:0 0 20px rgba(0,212,255,0.6);'>📊 REAL-TIME METRICS</h2>", unsafe_allow_html=True)
+        st.markdown("")
+        
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
         
         with m1:
-            st.metric(
-                "👥 In Stadium",
-                f"{int(latest.get('fans_in_stadium', 0)):,}",
-                delta=f"{latest.get('arrival_rate', 0):.0f}/min"
-            )
-        
+            st.metric("👥 In Stadium", f"{int(latest.get('fans_in_stadium', 0)):,}",
+                     delta=f"{latest.get('arrival_rate', 0):.0f}/min")
         with m2:
-            st.metric(
-                "🔒 Security Q",
-                f"{int(latest.get('security_queue', 0)):,}",
-                delta=None
-            )
-        
+            st.metric("🔒 Entry Queue", f"{int(latest.get('security_queue', 0) + latest.get('turnstile_queue', 0)):,}")
         with m3:
-            st.metric(
-                "🚪 Turnstile Q",
-                f"{int(latest.get('turnstile_queue', 0)):,}",
-                delta=None
-            )
-        
-        with m4:
             entry_wait = latest.get('avg_security_wait', 0) + latest.get('avg_turnstile_wait', 0)
-            st.metric(
-                "⏱️ Entry Wait",
-                f"{entry_wait:.1f} min",
-                delta=None
-            )
-        
+            st.metric("⏱️ Entry Wait", f"{entry_wait:.1f} min")
+        with m4:
+            st.metric("🚪 Exit Queue", f"{int(latest.get('exit_queue', 0)):,}")
         with m5:
+            st.metric("⏱️ Exit Wait", f"{latest.get('avg_exit_wait', 0):.1f} min")
+        with m6:
             fill_pct = latest.get('fill_ratio', 0) * 100
-            st.metric(
-                "🏟️ Fill Rate",
-                f"{fill_pct:.1f}%",
-                delta=None
-            )
-        
-        # Exit metrics row
-        st.markdown("**🚪 Exit Metrics**")
-        e1, e2, e3, e4, e5 = st.columns(5)
-        
-        with e1:
-            st.metric(
-                "🚶 Exited",
-                f"{int(latest.get('fans_exited', 0)):,}",
-                delta=f"{latest.get('exit_rate', 0):.0f}/min"
-            )
-        
-        with e2:
-            st.metric(
-                "🚪 Exit Queue",
-                f"{int(latest.get('exit_queue', 0)):,}",
-                delta=None
-            )
-        
-        with e3:
-            st.metric(
-                "⏱️ Exit Wait",
-                f"{latest.get('avg_exit_wait', 0):.1f} min",
-                delta=None
-            )
-        
-        with e4:
-            exit_util = latest.get('exit_utilization', 0) * 100
-            st.metric(
-                "📊 Exit Util",
-                f"{exit_util:.0f}%",
-                delta=None
-            )
-        
-        with e5:
-            exit_pct = latest.get('exit_progress', 0) * 100
-            st.metric(
-                "✅ Exit Progress",
-                f"{exit_pct:.1f}%",
-                delta=None
-            )
+            st.metric("🏟️ Fill", f"{fill_pct:.1f}%")
     
-    st.markdown("---")
-    
-    # Charts Section
+    # ============ CHARTS ============
     col_left, col_right = st.columns([3, 2])
     
     with col_left:
-        # Queue comparison chart (Entry)
-        queue_chart = create_queue_comparison_chart(data)
+        queue_chart = create_queue_chart(data)
         if queue_chart:
             st.plotly_chart(queue_chart, use_container_width=True)
         
-        # Exit queue chart
-        exit_chart = create_exit_queue_chart(data)
-        if exit_chart:
-            st.plotly_chart(exit_chart, use_container_width=True)
-        
-        # Flow rate chart
-        flow_chart = create_flow_rate_chart(data)
-        if flow_chart:
-            st.plotly_chart(flow_chart, use_container_width=True)
+        wait_chart = create_wait_time_chart(data)
+        if wait_chart:
+            st.plotly_chart(wait_chart, use_container_width=True)
     
     with col_right:
-        # Entry wait time gauge
-        if data is not None and len(data) > 0:
-            latest = data.iloc[-1]
-            total_wait = latest.get('avg_security_wait', 0) + latest.get('avg_turnstile_wait', 0)
-            gauge = create_wait_time_gauge(total_wait)
-            st.plotly_chart(gauge, use_container_width=True)
+        flow_chart = create_flow_chart(data)
+        if flow_chart:
+            st.plotly_chart(flow_chart, use_container_width=True)
         
-        # Utilization chart
-        util_chart = create_utilization_chart(data)
-        if util_chart:
-            st.plotly_chart(util_chart, use_container_width=True)
-        
-        # Stadium fill chart
         fill_chart = create_stadium_fill_chart(data)
         if fill_chart:
             st.plotly_chart(fill_chart, use_container_width=True)
     
+    # ============ TABS ============
     st.markdown("---")
     
-    # Tabs for additional info
-    tab1, tab2, tab3, tab4 = st.tabs(["🤖 ML Control Actions", "📋 Data Table", "📊 Statistics", "ℹ️ About"])
+    tab1, tab2, tab3 = st.tabs(["🤖 ML Actions", "📋 Data", "📊 Statistics"])
     
     with tab1:
-        st.subheader("ML Control Decision Log")
-        
         if data is not None and len(data) > 0:
             actions = generate_ml_actions(data)
             
             if actions:
-                entry_actions = [a for a in actions if a.get('risk_type') == 'ENTRY']
-                exit_actions = [a for a in actions if a.get('risk_type') == 'EXIT']
-                
-                # Current gate states (from last action)
+                # Current resource state
                 last_action = actions[-1]
-                st.markdown("##### 📊 Current Resource State")
-                g1, g2, g3, g4 = st.columns(4)
-                g1.metric("🔒 Security", last_action.get('security', 30))
-                g2.metric("🚪 Entry Gates", last_action.get('entry', 20))
-                g3.metric("🚶 Exit Gates", last_action.get('exit', 25))
-                g4.metric("🏪 Vendors", last_action.get('vendors', 40))
+                st.markdown("<h3 style='color:#00d4ff;text-transform:uppercase;letter-spacing:2px;'>📊 CURRENT RESOURCE ALLOCATION</h3>", unsafe_allow_html=True)
+                r1, r2, r3, r4 = st.columns(4)
+                r1.metric("🔒 SECURITY", last_action.get('security', 30))
+                r2.metric("🚪 ENTRY GATES", last_action.get('entry', 20))
+                r3.metric("🚶 EXIT GATES", last_action.get('exit', 25))
+                r4.metric("🏪 VENDORS", last_action.get('vendors', 40))
                 
                 st.markdown("---")
                 
-                # Summary metrics
+                # Stats
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Total Actions", len(actions))
-                c2.metric("Entry", len(entry_actions))
-                c3.metric("Exit", len(exit_actions))
-                strong_count = len([a for a in actions if a['type'] == 'STRONG'])
-                c4.metric("Critical", strong_count)
+                c2.metric("Entry", len([a for a in actions if a.get('risk_type') == 'ENTRY']))
+                c3.metric("Exit", len([a for a in actions if a.get('risk_type') == 'EXIT']))
+                c4.metric("Critical", len([a for a in actions if a['type'] == 'STRONG']))
                 
                 st.markdown("---")
                 
-                # Display actions with gate state
-                for action in reversed(actions[-12:]):
+                # Action log
+                for action in reversed(actions[-10:]):
                     is_exit = action.get('risk_type') == 'EXIT'
                     is_strong = action['type'] == 'STRONG'
                     
                     card_class = 'ml-action'
                     if is_strong:
-                        card_class += ' ml-action-strong'
+                        card_class += ' strong'
                     if is_exit:
-                        card_class += ' ml-action-exit'
+                        card_class += ' exit-action'
                     
                     type_badge = 'ml-badge-strong' if is_strong else 'ml-badge-moderate'
                     phase_badge = 'ml-badge-exit' if is_exit else 'ml-badge-entry'
-                    phase_icon = '🚪' if is_exit else '🔐'
-                    
-                    # Gate state display
-                    gate_state = f"Sec:{action.get('security', '-')} | Entry:{action.get('entry', '-')} | Exit:{action.get('exit', '-')}"
                     
                     st.markdown(f'''
                     <div class="{card_class}">
-                        <div class="ml-action-header">
-                            <span class="ml-time">t={int(action["time"])}min</span>
+                        <div style="margin-bottom:6px;">
                             <span class="ml-badge {type_badge}">{action["type"]}</span>
-                            <span class="ml-badge {phase_badge}">{phase_icon} {action["risk_type"]}</span>
+                            <span class="ml-badge {phase_badge}">{action.get("risk_type", "ENTRY")}</span>
+                            <span style="color:#64748b;font-size:0.85rem;">t={int(action["time"])}min</span>
                         </div>
-                        <div class="ml-details">
-                            <b>Risk:</b> {action.get("risk", 0):.0%} | 
-                            <b>Queue:</b> {action.get("queue", 0):,} | 
-                            <b>Wait:</b> {action.get("wait", 0):.1f}min
+                        <div style="font-size:0.9rem;">
+                            Risk: <b>{action.get("risk", 0):.0%}</b> | 
+                            Queue: <b>{action.get("queue", 0):,}</b> | 
+                            Wait: <b>{action.get("wait", 0):.1f}min</b>
                         </div>
-                        <div class="ml-action-taken">→ {action.get("decision", "N/A")}</div>
-                        <div style="font-size:0.75rem;color:#94a3b8;margin-top:4px">📊 {gate_state}</div>
+                        <div style="background:#f1f5f9;padding:6px 10px;border-radius:6px;margin-top:8px;font-size:0.85rem;">
+                            → {action.get("decision", "N/A")}
+                        </div>
                     </div>
                     ''', unsafe_allow_html=True)
             else:
-                st.success("✓ No interventions needed - System optimal")
+                st.success("✓ System optimal - No interventions needed")
         else:
             st.info("Run a simulation to see ML actions")
     
     with tab2:
-        st.subheader("Simulation Data")
         if data is not None:
-            display_cols = [
-                'time', 'fans_in_stadium', 'security_queue', 'turnstile_queue',
-                'avg_security_wait', 'avg_turnstile_wait', 'arrival_rate', 'exit_rate'
-            ]
-            available_cols = [c for c in display_cols if c in data.columns]
-            st.dataframe(
-                data[available_cols].tail(30).round(2),
-                use_container_width=True,
-                hide_index=True
-            )
+            cols = ['time', 'fans_in_stadium', 'security_queue', 'turnstile_queue',
+                   'exit_queue', 'avg_security_wait', 'avg_turnstile_wait', 'avg_exit_wait',
+                   'arrival_rate', 'exit_rate']
+            available = [c for c in cols if c in data.columns]
+            st.dataframe(data[available].tail(30).round(2), use_container_width=True, hide_index=True)
     
     with tab3:
-        st.subheader("Simulation Statistics")
         if data is not None and len(data) > 0:
-            col1, col2, col3, col4 = st.columns(4)
+            c1, c2, c3, c4 = st.columns(4)
             
-            with col1:
-                st.metric("Peak Security Queue", f"{int(data['security_queue'].max()):,}")
-                st.metric("Avg Security Wait", f"{data['avg_security_wait'].mean():.1f} min")
+            with c1:
+                st.metric("Peak Entry Queue", f"{int(data['security_queue'].max() + data['turnstile_queue'].max()):,}")
+                st.metric("Avg Entry Wait", f"{(data['avg_security_wait'] + data['avg_turnstile_wait']).mean():.1f} min")
             
-            with col2:
-                st.metric("Peak Turnstile Queue", f"{int(data['turnstile_queue'].max()):,}")
-                st.metric("Avg Turnstile Wait", f"{data['avg_turnstile_wait'].mean():.1f} min")
+            with c2:
+                st.metric("Peak Exit Queue", f"{int(data['exit_queue'].max()):,}")
+                st.metric("Avg Exit Wait", f"{data['avg_exit_wait'].mean():.1f} min")
             
-            with col3:
-                st.metric("Peak Arrival Rate", f"{data['arrival_rate'].max():.0f}/min")
-                st.metric("Max Fans in Stadium", f"{int(data['fans_in_stadium'].max()):,}")
+            with c3:
+                st.metric("Peak Arrivals", f"{data['arrival_rate'].max():.0f}/min")
+                st.metric("Max Fans", f"{int(data['fans_in_stadium'].max()):,}")
             
-            with col4:
+            with c4:
                 st.metric("Max Total Wait", f"{(data['avg_security_wait'] + data['avg_turnstile_wait']).max():.1f} min")
-                st.metric("Simulation Duration", f"{int(data['time'].max())} min")
-    
-    with tab4:
-        st.subheader("About Stadium AI")
-        st.markdown("""
-        **Stadium AI Control Center** is an advanced real-time crowd management system 
-        that uses machine learning to optimize fan flow and minimize wait times.
-        
-        **Features:**
-        - 🔄 Real-time monitoring of queue lengths and wait times
-        - 🤖 ML-based predictive control for capacity management
-        - 📊 Comprehensive resource utilization tracking
-        - ⚠️ Intelligent alert system for congestion events
-        - 📈 Historical trend analysis and statistics
-        
-        **System Components:**
-        - Security Screening: 60 lanes
-        - Turnstile Gates: 40 gates  
-        - Vendor Stations: 120 stations
-        - Exit Gates: 40 gates
-        - Stadium Capacity: 68,000 fans
-        """)
+                st.metric("Duration", f"{int(data['time'].max())} min")
     
     # Auto-refresh
     if st.session_state.auto_refresh:
