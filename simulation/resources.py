@@ -17,50 +17,49 @@ class StadiumResources:
     - Vendors (concessions)
     - Exit gates (separate from entry)
     - Parking
+    
+    NEW REALISTIC FEATURES:
+    - Staff fatigue (efficiency degrades over time)
+    - Shift changes (temporary capacity reduction)
+    - Break schedules (some lanes close periodically)
+    - Equipment malfunctions (random temporary closures)
     """
     
     def __init__(self, env):
         self.env = env
+        
+        # Staff efficiency (degrades with fatigue)
+        self.staff_efficiency = 1.0
+        self.last_break_time = 0
 
         # -------------------------
         # SECURITY SCREENING
         # -------------------------
-        # Walk-through metal detectors: 5-10 sec per person
-        # 60 lanes × 6 fans/min avg = 360 fans/min throughput
-        # NOT the main bottleneck - turnstiles are
         self.MAX_SECURITY = 80
         self.active_security = 60
         self.security = simpy.Resource(env, capacity=self.active_security)
+        self.security_on_break = 0
 
         # -------------------------
         # TURNSTILES (ENTRY GATES)
         # -------------------------
-        # After security, fans scan tickets at turnstiles
-        # Each turnstile: ~10-15 fans/min (4-6 sec per scan)
-        # 40 turnstiles = 400-600 fans/min MAX
-        # Peak arrival ~500 fans/min, so some queuing expected
         self.MAX_TURNSTILES = 60
         self.active_turnstiles = 40
         self.turnstile_service_factor = 1.0
         self.turnstiles = simpy.Resource(env, capacity=self.active_turnstiles)
+        self.turnstiles_malfunctioning = 0
 
         # -------------------------
         # VENDORS (CONCESSIONS)
         # -------------------------
-        # Each vendor serves ~40 customers/hour = 0.67/min
-        # 120 vendors = ~80 customers/min
-        # With 20% of 68k fans = 13,600 wanting food spread over time
         self.MAX_VENDORS = 150
         self.active_vendors = 120
         self.vendors = simpy.Resource(env, capacity=self.active_vendors)
+        self.vendors_on_break = 0
 
         # -------------------------
         # EXIT GATES
         # -------------------------
-        # Separate from entry - exits are wider/faster
-        # Each exit gate: ~30-50 fans/min
-        # 40 gates = 1200-2000 fans/min
-        # This handles exit surge better
         self.MAX_EXIT_GATES = 60
         self.active_exit_gates = 40
         self.exit_gates = simpy.Resource(env, capacity=self.active_exit_gates)
@@ -76,6 +75,83 @@ class StadiumResources:
         # -------------------------
         self.redirection_enabled = False
         self.exit_redirection_enabled = False
+        
+        # Start staff management processes
+        self.env.process(self.staff_fatigue_process())
+        self.env.process(self.equipment_malfunction_process())
+        self.env.process(self.break_schedule_process())
+    
+    def staff_fatigue_process(self):
+        """Simulate staff fatigue over time - efficiency degrades."""
+        while True:
+            yield self.env.timeout(30)  # Check every 30 minutes
+            
+            # Fatigue builds up
+            self.staff_efficiency = max(0.75, self.staff_efficiency - 0.03)
+            
+            # Service times increase with fatigue
+            if self.staff_efficiency < 0.9:
+                self.turnstile_service_factor = max(0.85, 1.0 / self.staff_efficiency)
+    
+    def equipment_malfunction_process(self):
+        """Random equipment malfunctions temporarily reduce capacity."""
+        import random
+        while True:
+            yield self.env.timeout(random.uniform(40, 80))  # Random intervals
+            
+            # Random malfunction
+            malfunction_type = random.choice(['turnstile', 'security', 'none', 'none'])
+            
+            if malfunction_type == 'turnstile' and self.turnstiles_malfunctioning == 0:
+                # 1-2 turnstiles malfunction
+                affected = random.randint(1, 2)
+                self.turnstiles_malfunctioning = affected
+                old_capacity = self.active_turnstiles
+                self.active_turnstiles = max(10, self.active_turnstiles - affected)
+                self.turnstiles = simpy.Resource(self.env, capacity=self.active_turnstiles)
+                
+                # Repair after 15-30 minutes
+                yield self.env.timeout(random.uniform(15, 30))
+                self.active_turnstiles = old_capacity
+                self.turnstiles = simpy.Resource(self.env, capacity=self.active_turnstiles)
+                self.turnstiles_malfunctioning = 0
+            
+            elif malfunction_type == 'security' and self.security_on_break == 0:
+                # 1-3 security lanes have technical issues
+                affected = random.randint(1, 3)
+                old_capacity = self.active_security
+                self.active_security = max(15, self.active_security - affected)
+                self.security = simpy.Resource(self.env, capacity=self.active_security)
+                
+                # Fix after 10-20 minutes
+                yield self.env.timeout(random.uniform(10, 20))
+                self.active_security = old_capacity
+                self.security = simpy.Resource(self.env, capacity=self.active_security)
+    
+    def break_schedule_process(self):
+        """Staff take breaks periodically (realistic workforce management)."""
+        import random
+        while True:
+            yield self.env.timeout(60)  # Every hour
+            
+            # Vendors take staggered breaks (10-15% at a time)
+            if self.vendors_on_break == 0 and self.env.now < 280:  # Not during match
+                break_count = max(5, int(self.active_vendors * 0.12))
+                self.vendors_on_break = break_count
+                old_capacity = self.active_vendors
+                self.active_vendors = max(20, self.active_vendors - break_count)
+                self.vendors = simpy.Resource(self.env, capacity=self.active_vendors)
+                
+                # Break duration: 15 minutes
+                yield self.env.timeout(15)
+                self.active_vendors = old_capacity
+                self.vendors = simpy.Resource(self.env, capacity=self.active_vendors)
+                self.vendors_on_break = 0
+                
+                # Restore some efficiency after break
+                self.staff_efficiency = min(1.0, self.staff_efficiency + 0.05)
+            
+            yield self.env.timeout(random.uniform(20, 40))  # Variable between breaks
 
     def open_extra_security(self, n):
         """Open additional security lanes."""
